@@ -46,7 +46,7 @@ target_compile_features(HipUtilsCommonConfig
 
 # Right now, this is a header-only library.
 # Specify how to install the library headers.
-install(FILES
-    ${CMAKE_SOURCE_DIR}/include/h4i/hiputils/HandleManager.h
+install(DIRECTORY
+    ${CMAKE_SOURCE_DIR}/include/h4i
     TYPE INCLUDE)
 

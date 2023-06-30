@@ -19,7 +19,7 @@ private:
         H4I::MKLShim::Context::NativeHandleArray handles;
         int nHandles;
 
-        StreamHandles(hipStream_t stream)
+        StreamHandles(hipStream_t stream = nullptr)
           : nHandles(handles.size())
         {    
             // Note this code uses a chipStar extension to the HIP API.
@@ -38,15 +38,15 @@ public:
         if(handle != nullptr)
         {
             // Determine the backend we're using.
-            auto backend = H4I::MKLShim::ToBackend(hipGetBackendName());
+            auto backend = H4I::MKLShim::Context::ToBackend(hipGetBackendName());
 
             // Obtain the native backend handles.
-            H4I::HIPUtils::NativeHandles streamHandles(nullptr);
+            StreamHandles streamHandles;
 
             // Associate the backend handles with the given handle variable.
-            *handle = H4I::MKLShim::Create(streamHandles.handles, backend);
+            *handle = H4I::MKLShim::Context::Create(streamHandles.handles, backend);
         }
-        return (*handle != nullptr) ? successStatus : nullptrStatus;
+        return (*handle != nullptr) ? successStatus : nullHandleStatus;
     }
 
     StatusType SetStream(HandleType handle, hipStream_t stream)
@@ -55,9 +55,13 @@ public:
         {
             // Access the real backend handle context associated with the given handle.
             H4I::MKLShim::Context* ctxt = static_cast<H4I::MKLShim::Context*>(handle);
+            assert(ctxt != nullptr);
 
             // Obtain the native backend handles associated with the given stream.
-            StreamHandles streamHandles.handles);
+            StreamHandles streamHandles(stream);
+
+            // Associate the stream's native handle with our context.
+            ctxt->SetStream(streamHandles.handles);
         }
         return (handle != nullptr) ? successStatus : nullHandleStatus;
     }
@@ -67,7 +71,8 @@ public:
         if(handle != nullptr)
         {
             H4I::MKLShim::Context* ctxt = static_cast<H4I::MKLShim::Context*>(handle);
-            H4I::MKLShim::Destroy(ctxt);
+            assert(ctxt != nullptr);
+            delete ctxt;
         }
         return (handle != nullptr) ? successStatus : nullHandleStatus;
     }
