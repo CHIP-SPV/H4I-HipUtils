@@ -33,7 +33,10 @@ private:
         }
     };
 
-    std::unordered_map<hipblasHandle_t, hipStream_t> handleMap;
+    // A map for tracking which HIP stream is associated with each
+    // library-specific handle, so that we can respond to 
+    // GetStream requests.
+    std::unordered_map<HandleType, hipStream_t> handleToHipStreamMap;
 
 public:
     StatusType Create(HandleType* handle)
@@ -45,11 +48,15 @@ public:
             // Determine the backend we're using.
             auto backend = H4I::MKLShim::Context::ToBackend(hipGetBackendName());
 
-            // Obtain the native backend handles.
+            // Obtain the native backend handles for the default HIP stream.
             StreamHandles streamHandles;
 
             // Associate the backend handles with the given handle variable.
             *handle = H4I::MKLShim::Context::Create(streamHandles.handles, backend);
+
+            // Add an entry to our map indicating the library-specific handle
+            // we just created is associated with the default stream.
+            handleToHipStreamMap[*handle] = nullptr;
         }
 
         // TODO this doesn't handle the case where there was a failure to create.
@@ -61,19 +68,21 @@ public:
     {
         if(handle != nullptr)
         {
-            // Access the real backend handle context associated with the given handle.
+            // Access the real backend handle context associated with the library-specific handle.
             H4I::MKLShim::Context* ctxt = static_cast<H4I::MKLShim::Context*>(handle);
             assert(ctxt != nullptr);
 
-            // Obtain the native backend handles associated with the given stream.
+            // Obtain the native backend handles associated with the given HIP stream.
             StreamHandles streamHandles(stream);
 
-            // Associate the stream's native handle with our context.
+            // Associate the native backend handles we found with the backend context.
+            // NB: we can't just create a new backend context, because we have no way 
+            // to change the caller's handle in this function.
             ctxt->SetStream(streamHandles.handles);
 
-            // Associate the given stream handle with the given hipBLAS handle.
-            // Note: this may overwrite some other stream.
-            handleMap[handle] = stream;
+            // Associate the given HIP stream handle with the given library-specific handle.
+            assert(handleToHipStreamMap.find(handle) != handleToHipStreamMap.end());
+            handleToHipStreamMap[handle] = stream;
         }
         return (handle != nullptr) ? successStatus : nullHandleStatus;
     }
@@ -82,20 +91,15 @@ public:
     {
         if(handle != nullptr)
         {
-            // Access the real backend handle context associated with the given handle.
-            H4I::MKLShim::Context* ctxt = static_cast<H4I::MKLShim::Context*>(handle);
-            assert(ctxt != nullptr);
-
             if(stream != nullptr)
             {
-                // See if we have seen a HIP stream associated with this handle.
-                // If not, return null to indicate we're using the default stream.
-                *stream = nullptr;
-                auto iter = handleMap.find(handle);
-                if(iter != handleMap.end())
-                {
-                    *stream = iter->second;
-                }
+                // Determine which HIP stream is currently associated with the
+                // given library-specific handle.  The associated HIP stream
+                // handle might be nullptr, indicating the library-specific context
+                // is using the default HIP stream.
+                auto iter = handleToHipStreamMap.find(handle);
+                assert(iter != handleToHipStreamMap.end());
+                *stream = iter->second;
             }
             else
             {
@@ -110,6 +114,12 @@ public:
     {
         if(handle != nullptr)
         {
+            // Forget about the given library-specific handle.
+            auto iter = handleToHipStreamMap.find(handle);
+            assert(iter != handleToHipStreamMap.end());
+            handleToHipStreamMap.erase(iter);
+
+            // Release the backend handle context.
             H4I::MKLShim::Context* ctxt = static_cast<H4I::MKLShim::Context*>(handle);
             assert(ctxt != nullptr);
             delete ctxt;
