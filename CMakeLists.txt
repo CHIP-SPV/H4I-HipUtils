@@ -44,9 +44,5 @@ target_compile_features(HipUtilsCommonConfig
         cxx_std_17
     )
 
-# Right now, this is a header-only library.
-# Specify how to install the library headers.
-install(DIRECTORY
-    ${CMAKE_SOURCE_DIR}/include/h4i
-    TYPE INCLUDE)
+add_subdirectory(src)
 
